@@ -1,6 +1,6 @@
 #!env python
 # -*- coding: utf-8 -*-
-# Thin Plate Spline (2D) demo.
+# Thin Plate Spline (2D, 3D) demo.
 # reference: http://step.polymtl.ca/~rv101/thinplates/
 import numpy as np
 import scipy as sp
@@ -159,10 +159,44 @@ def thin_plate_spline_2d(use_2d_class):
     ax.matshow(interpolated, vmin=0.0, vmax=1.0, cmap=cmap)
     ax.set_title('interpolated')
     fig.tight_layout()
-    fig.suptitle('2D Thin Plate Spline: f: R^2 -> R')
+    fig.subplots_adjust(top=0.9)
+    fig.suptitle('2D Thin Plate Spline: f: R^2 -> R (%s)' % tps2d.__class__.__name__)
 
+def thin_plate_spline_3d():
+    S = 5
+    N = 30
+    radius = S*np.sqrt(2.0)
+    xs = np.linspace(-S, S, 2*N); np.random.shuffle(xs); xs = np.array(xs[:N]).astype(np.float32)
+    ys = np.linspace(-S, S, 2*N); np.random.shuffle(ys); ys = np.array(ys[:N]).astype(np.float32)
+    zs = np.linspace(-S, S, 2*N); np.random.shuffle(zs); zs = np.array(zs[:N]).astype(np.float32)
+    Xs = np.vstack([xs, ys, zs]).T
+    hs = np.random.randn(N)*0.5 + 1.0
+
+    tps = ThinPlateSpline()
+    tps.fit(Xs, hs)
+
+    Ni = 8
+    ixs, iys, izs = np.mgrid[:Ni, :Ni, :Ni]*2.0/Ni*S - S
+    interpolated = tps.interpolate(np.vstack([ixs.ravel(), iys.ravel(), izs.ravel()]).T)
+    interpolation_diff = [tps.interpolate([x, y, z]) - h for x, y, z, h in zip(xs, ys, zs, hs)]
+    print 'original point mean abs error', np.mean(np.abs(interpolation_diff))
+
+    fig = plt.figure()
+    r, c, i = 2, 2, 1
+    ax = fig.add_subplot(2, 2, i, projection='3d'); i += 1
+    ax.scatter(xs, ys, zs, c=hs)
+    ax.set_aspect(1.0)
+    ax.set_title('original')
+    ax = fig.add_subplot(2, 2, i); i += 1
+    ax.matshow(tps.L)
+    ax.set_title('matrix L')
+    ax = fig.add_subplot(2, 2, i, projection='3d'); i += 1
+    ax.scatter(ixs.ravel(), iys.ravel(), izs.ravel(), c=interpolated.ravel())
+    fig.suptitle('3D Thin Plate Spline: f: R^3 -> R')
 
 if __name__=='__main__':
     thin_plate_spline_2d(True)
     thin_plate_spline_2d(False)
+    thin_plate_spline_3d()
     plt.show()
+
