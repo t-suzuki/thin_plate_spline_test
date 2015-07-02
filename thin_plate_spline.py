@@ -8,6 +8,61 @@ import scipy.linalg
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+class ThinPlateSpline(object):
+    u'''k-D Thin Plate Spline'''
+    def __init__(self):
+        pass
+    def U(self, r):
+        rsq = r**2.0
+        if rsq == 0.0: return 0.0
+        val = rsq*np.log(rsq)
+        if np.isnan(val): return 0.0
+        return val
+    def fit(self, Xs, hs):
+        u'''fit a thin plate spline on k dimentional space: R^k -> R
+        @param[in] Xs (N samples * k dimention) input points
+        @param[in] hs (N samples) interpolant
+        '''
+        self.Xs = Xs = np.array(Xs)
+        self.hs = hs = np.array(hs).ravel()
+        assert len(Xs.shape) == 2
+        N, k = Xs.shape
+        P = np.hstack([np.ones((N, 1)), Xs])
+        K = np.zeros((N, N), np.float32)
+        for i in range(N):
+            for j in range(i + 1, N):
+                K[j, i] = K[i, j] = self.U(np.linalg.norm(P[i] - P[j]))
+        L = np.vstack([
+            np.hstack([K, P]),
+            np.hstack([P.T, np.zeros((P.shape[1], P.shape[1]))]),
+            ])
+        Y = np.hstack([hs, np.zeros(k + 1)]).T
+        # L * (W | a0 a1 a2 .. aN-1) = Y
+        W_a = sp.linalg.solve(L, Y)
+        self.W = W_a[:N]
+        self.a_s = W_a[N:]
+        self.P = P
+        self.L = L
+        self.k = k
+        self.N = N
+
+    def interpolate(self, Xs):
+        Xs = np.array(Xs)
+        N, k = self.Xs.shape
+        if len(Xs.shape) != 2:
+            Xs = Xs.reshape((-1, k))
+        N_input, k_input = Xs.shape
+        assert k_input == k
+        P_input = np.hstack([np.ones((N_input, 1)), Xs]).astype(np.float32)
+        res = (self.a_s*P_input).sum(axis=1)
+        for i in range(N):
+            if len(P_input) > 1:
+                for j, row in enumerate(P_input):
+                    res[j] += self.W[i]*self.U(np.linalg.norm(self.P[i] - row))
+            else:
+                res += self.W[i]*self.U(np.linalg.norm(self.P[i] - P_input))
+        return res
+
 class ThinPlateSpline2D(object):
     def __init__(self):
         pass
@@ -54,7 +109,7 @@ class ThinPlateSpline2D(object):
                 res += self.W[i]*self.U(np.linalg.norm(self.P[i] - P_input))
         return res
 
-def thin_plate_spline_2d():
+def thin_plate_spline_2d(use_2d_class):
     S = 30
     N = 10
     use_random = True
@@ -71,12 +126,20 @@ def thin_plate_spline_2d():
     for x, y, h in zip(xs, ys, hs):
         org[int(x), int(y)] = h
 
-    tps2d = ThinPlateSpline2D()
-    tps2d.fit(xs, ys, hs)
+    if use_2d_class:
+        tps2d = ThinPlateSpline2D()
+        tps2d.fit(xs, ys, hs)
 
-    ixs, iys = np.mgrid[:S, :S]
-    interpolated = tps2d.interpolate(ixs, iys).reshape((S, S))
-    interpolation_diff = [tps2d.interpolate(x, y) - h for x, y, h in zip(xs, ys, hs)]
+        ixs, iys = np.mgrid[:S, :S]
+        interpolated = tps2d.interpolate(ixs, iys).reshape((S, S))
+        interpolation_diff = [tps2d.interpolate(x, y) - h for x, y, h in zip(xs, ys, hs)]
+    else:
+        tps2d = ThinPlateSpline()
+        tps2d.fit(np.vstack([xs, ys]).T, hs)
+
+        ixs, iys = np.mgrid[:S, :S]
+        interpolated = tps2d.interpolate(np.vstack([ixs.ravel(), iys.ravel()]).T).reshape((S, S))
+        interpolation_diff = [tps2d.interpolate([x, y]) - h for x, y, h in zip(xs, ys, hs)]
     print 'original point mean abs error', np.mean(np.abs(interpolation_diff))
 
     fig = plt.figure()
@@ -100,5 +163,6 @@ def thin_plate_spline_2d():
 
 
 if __name__=='__main__':
-    thin_plate_spline_2d()
+    thin_plate_spline_2d(True)
+    thin_plate_spline_2d(False)
     plt.show()
